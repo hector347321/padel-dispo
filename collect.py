@@ -158,27 +158,45 @@ class Tree(HTMLParser):
 
 
 # ─────────────────────────── PLAYTOMIC ───────────────────────────
-def _playtomic_api(club, s):
-    """API publique app.playtomic.io (accessible depuis un serveur)."""
+# Terrains connus (lus sur playtomic.com le 20.10.2026) : permet d'interroger les
+# disponibilités sans charger la page du club, que Playtomic refuse aux serveurs.
+PLAYTOMIC_COURTS = {
+    "dbfb6961-6d55-4075-baae-f5966c0e4f03": {
+        "01103cf2-06e8-4517-8b5d-8725d86b240d": ("Padel 1 - ACE Electroménager", []),
+        "887ab023-f4d0-4119-ac44-debbda270f59": ("Padel 2 - Entretiens Rodriguez", []),
+        "4ef0b95b-f071-4da1-aa4f-b9f5481435dc": ("Padel 3", []),
+        "502a3a3e-ac6d-4bdb-9a1c-c05c56644f97": ("Single Padel", ["single"])},
+    "6e4cde43-4fa9-45a9-9326-d94dcb526c6b": {
+        "1445aa3a-9976-4ea1-8b74-48fd58a15e87": ("1 - GROUPE FACCHINETTI", []),
+        "c0d9e142-21bd-45d0-9606-d28d305fe4ba": ("2 - SCHENK IMMOBILIER", []),
+        "96f4a9af-dc8f-4333-b87d-67b37423e6c9": ("Padel 3", [])},
+    "53b5aaf2-7449-4691-96f8-a582ce37144b": {
+        "97a1c33c-5720-41ea-bbdf-cd1cbbcc34f4": ("Padel 1", ["outdoor"]),
+        "757bacaf-0247-49b3-bf49-4ed5c13b9f45": ("Padel 2", ["outdoor"])},
+    "4613ab9b-740d-4226-ab3a-28651fd33ef5": {
+        "fad17f7c-b594-4ebc-a6b5-6c021869aeeb": ("1 - Terrasport", []),
+        "472359fe-bbdb-4cff-9e85-ccaa27d659ba": ("Padel 2", [])},
+    "e03e742b-c7fe-4fcf-b3de-ea555a0750e3": {
+        "bd7144a2-cb97-4705-bd4e-18cceaf11f82": ("Padel 1", [])},
+}
+PT_HDR = {"Accept": "application/json, text/plain, */*", "Sec-Fetch-Site": "same-origin",
+          "Sec-Fetch-Mode": "cors", "Sec-Fetch-Dest": "empty"}
+
+
+def _playtomic_direct(club, s):
+    """Appel direct à l'API de disponibilités du site, terrains connus."""
     tid = club["tenant"]
-    t = json.loads(s.get(f"https://app.playtomic.io/api/v1/tenants/{tid}", {"Accept": "application/json"}))
-    courts = {}
-    for r in t.get("resources", []):
-        if r.get("sport_id", "PADEL") != "PADEL":
-            continue
-        p = r.get("properties") or {}
-        feats = [str(v).lower() for v in p.values()]
-        courts[r["resource_id"]] = (r.get("name", "Terrain"), feats)
+    courts = PLAYTOMIC_COURTS.get(tid, {})
+    ref = {"Referer": f"https://playtomic.com/fr/clubs/{club['slug']}", **PT_HDR}
 
     def dispo(d):
-        q = urllib.parse.urlencode({"user_id": "me", "tenant_id": tid, "sport_id": "PADEL",
-                                    "local_start_min": f"{d}T00:00:00", "local_start_max": f"{d}T23:59:59"})
-        return json.loads(s.get(f"https://app.playtomic.io/api/v1/availability?{q}", {"Accept": "application/json"}))
+        return json.loads(s.get(
+            f"https://playtomic.com/api/clubs/availability?tenant_id={tid}&date={d}&sport_id=PADEL", ref))
     return courts, dispo
 
 
 def _playtomic_web(club, s):
-    """Site playtomic.com (bloque parfois les serveurs, d'où le plan B ci-dessus)."""
+    """Page du club sur playtomic.com (plan B si les terrains changent)."""
     page_url = f"https://playtomic.com/fr/clubs/{club['slug']}"
     h = s.get(page_url).replace('\\\\"', '"').replace('\\"', '"')
     tid = club.get("tenant") or re.search(r'"tenant_id":"([0-9a-f-]{36})"', h).group(1)
@@ -197,7 +215,7 @@ def _playtomic_web(club, s):
 def playtomic(club, s):
     page_url = f"https://playtomic.com/fr/clubs/{club['slug']}"
     erreurs = []
-    for mode in ((_playtomic_api, _playtomic_web) if club.get("tenant") else (_playtomic_web,)):
+    for mode in ((_playtomic_direct, _playtomic_web) if club.get("tenant") else (_playtomic_web,)):
         try:
             courts, dispo = mode(club, s)
             dispo(jours()[0])
@@ -389,13 +407,9 @@ def correspond(x, regle):
     if regle.get("actif") is False:
         return False
     dt = datetime.fromisoformat(x["debut"])
-    if regle.get("dates"):                       # dates précises "2026-10-25"
-        if x["debut"][:10] not in regle["dates"]:
-            return False
-    else:                                        # jours récurrents
-        jours_ok = [j[:3].lower() for j in regle.get("jours", JOURS_NOMS)]
-        if JOURS_NOMS[dt.weekday()] not in jours_ok:
-            return False
+    # Uniquement des dates précises ("2026-10-25"), pas de jours récurrents
+    if x["debut"][:10] not in (regle.get("dates") or []):
+        return False
     if not (regle.get("de", "00:00") <= x["debut"][11:16] <= regle.get("a", "23:59")):
         return False
     if not any(d["min"] >= int(regle.get("duree_min", 60)) for d in x["durees"]):
