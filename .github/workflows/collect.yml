@@ -5,6 +5,9 @@ on:
     # Toutes les 15 min de 6h à minuit (heure suisse ≈ UTC+1/+2)
     - cron: "*/15 4-22 * * *"
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["collect.py", "alertes.json", ".github/workflows/collect.yml"]
 
 permissions:
   contents: write
