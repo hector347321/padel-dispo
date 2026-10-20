@@ -1,4 +1,21 @@
 {
   "_aide": "Géré depuis la page (bouton Alertes). Une notification part UNIQUEMENT quand un créneau se libère à une des dates indiquées, dans la plage horaire. clubs vide = tous.",
-  "alertes": []
+  "alertes": [
+    {
+      "de": "18:00",
+      "a": "21:00",
+      "duree_min": 60,
+      "clubs": [
+        "Green Club",
+        "Urban Padel",
+        "Padel Parc Préverenges",
+        "Padel Parc Etoy",
+        "Centre Fairplay"
+      ],
+      "sans_simple": true,
+      "dates": [
+        "2026-10-22"
+      ]
+    }
+  ]
 }
