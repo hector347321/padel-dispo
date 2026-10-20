@@ -159,9 +159,9 @@ class Tree(HTMLParser):
 
 # ─────────────────────────── PLAYTOMIC ───────────────────────────
 def _playtomic_api(club, s):
-    """API publique api.playtomic.io (accessible depuis un serveur)."""
+    """API publique app.playtomic.io (accessible depuis un serveur)."""
     tid = club["tenant"]
-    t = json.loads(s.get(f"https://api.playtomic.io/v1/tenants/{tid}", {"Accept": "application/json"}))
+    t = json.loads(s.get(f"https://app.playtomic.io/api/v1/tenants/{tid}", {"Accept": "application/json"}))
     courts = {}
     for r in t.get("resources", []):
         if r.get("sport_id", "PADEL") != "PADEL":
@@ -173,7 +173,7 @@ def _playtomic_api(club, s):
     def dispo(d):
         q = urllib.parse.urlencode({"user_id": "me", "tenant_id": tid, "sport_id": "PADEL",
                                     "local_start_min": f"{d}T00:00:00", "local_start_max": f"{d}T23:59:59"})
-        return json.loads(s.get(f"https://api.playtomic.io/v1/availability?{q}", {"Accept": "application/json"}))
+        return json.loads(s.get(f"https://app.playtomic.io/api/v1/availability?{q}", {"Accept": "application/json"}))
     return courts, dispo
 
 
@@ -233,6 +233,10 @@ def matchpoint(club, s):
         re.search(r"(\w{8,})='([A-Za-z0-9+/=]{24,})';", grid)
     key = m.group(2)
     srv = f"{base}/booking/srvc.aspx"
+    hdr = {"Referer": f"{base}/Booking/Grid.aspx", "Origin": base,
+           "Accept": "application/json, text/javascript, */*; q=0.01"}
+    _post = s.post_json
+    s.post_json = lambda url, payload, headers=None: _post(url, payload, {**hdr, **(headers or {})})
     cuadros = s.post_json(f"{srv}/ObtenerCuadros", {"key": key})["d"]
     info = {"cle": key[:6], "cuadros": [(c.get("Id"), c.get("Nombre")) for c in (cuadros or [])], "jours": []}
     club["_info"] = info
@@ -246,7 +250,9 @@ def matchpoint(club, s):
                 info["jours"].append(str(q)[:120])
                 continue
             info["jours"].append([str(q.get("StrFecha")), len(q.get("Columnas") or []),
-                                  sum(len(col.get("HorariosFijos") or []) for col in q.get("Columnas") or [])])
+                                  sum(len(col.get("HorariosFijos") or []) for col in q.get("Columnas") or []),
+                                  {k: str(v)[:40] for k, v in q.items() if v not in (None, "", [], False, 0)}
+                                  if not q.get("Columnas") else ""])
             for col in q.get("Columnas", []):
                 for h in col.get("HorariosFijos", []) or []:
                     hh, mm = map(int, h["StrHoraInicio"].split(":"))
@@ -380,10 +386,16 @@ def charger_alertes():
 
 
 def correspond(x, regle):
-    dt = datetime.fromisoformat(x["debut"])
-    jours_ok = [j[:3].lower() for j in regle.get("jours", JOURS_NOMS)]
-    if JOURS_NOMS[dt.weekday()] not in jours_ok:
+    if regle.get("actif") is False:
         return False
+    dt = datetime.fromisoformat(x["debut"])
+    if regle.get("dates"):                       # dates précises "2026-10-25"
+        if x["debut"][:10] not in regle["dates"]:
+            return False
+    else:                                        # jours récurrents
+        jours_ok = [j[:3].lower() for j in regle.get("jours", JOURS_NOMS)]
+        if JOURS_NOMS[dt.weekday()] not in jours_ok:
+            return False
     if not (regle.get("de", "00:00") <= x["debut"][11:16] <= regle.get("a", "23:59")):
         return False
     if not any(d["min"] >= int(regle.get("duree_min", 60)) for d in x["durees"]):
