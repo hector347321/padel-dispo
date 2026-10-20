@@ -1,0 +1,38 @@
+name: Créneaux padel
+
+on:
+  schedule:
+    # Toutes les 15 min de 6h à minuit (heure suisse ≈ UTC+1/+2)
+    - cron: "*/15 4-22 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Récupérer les créneaux
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          PAGE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+        run: python3 collect.py
+
+      - name: Publier
+        run: |
+          git config user.name "padel-bot"
+          git config user.email "padel-bot@users.noreply.github.com"
+          git add docs/data.json
+          git diff --cached --quiet || git commit -m "créneaux $(date -u +%H:%M)" && git push

@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Padel libre">
+<meta name="theme-color" content="#f4f2ec" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121311" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>Padel libre</title>
+<style>
+:root{
+  --bg:#f4f2ec; --card:#fffdf8; --fg:#1b1c19; --mut:#76746c; --line:#e3e0d6;
+  --acc:#1d6b47; --acc-bg:#e2efe7; --chip:#ebe8df; --warn:#a3521b;
+  --r:14px;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#121311; --card:#1b1c1a; --fg:#ecebe5; --mut:#99978e; --line:#2b2c29;
+    --acc:#6fd3a0; --acc-bg:#1f3329; --chip:#252623; --warn:#e59a63;}
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  padding:env(safe-area-inset-top) 0 calc(28px + env(safe-area-inset-bottom))}
+main{max-width:640px;margin:0 auto;padding:0 16px}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:14px 0 10px;margin:0 -16px;padding-left:16px;padding-right:16px;
+  border-bottom:1px solid transparent;transition:border-color .2s}
+header.scrolled{border-bottom-color:var(--line)}
+h1{font-size:28px;letter-spacing:-.02em;margin:6px 0 2px;font-weight:700}
+.meta{color:var(--mut);font-size:13px}
+.meta b{color:var(--fg);font-weight:600}
+.row{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:10px 0 2px;margin:0 -16px;padding-left:16px;padding-right:16px}
+.row::-webkit-scrollbar{display:none}
+.chip{flex:none;border:0;background:var(--chip);color:var(--fg);font:inherit;font-size:14px;font-weight:500;
+  padding:8px 13px;border-radius:999px;white-space:nowrap}
+.chip[aria-pressed=true]{background:var(--fg);color:var(--bg)}
+.chip small{opacity:.6;font-weight:400;margin-left:4px}
+.filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-top:8px;font-size:14px;color:var(--mut)}
+.filters select{font:inherit;color:var(--fg);background:var(--chip);border:0;border-radius:10px;padding:7px 10px;-webkit-appearance:none;appearance:none}
+.filters button{font:inherit;font-size:14px;color:var(--acc);background:none;border:0;padding:6px 2px}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);margin:26px 2px 8px;font-weight:600}
+.list{background:var(--card);border-radius:var(--r);overflow:hidden;border:1px solid var(--line)}
+a.slot{display:grid;grid-template-columns:58px minmax(0,1fr) minmax(0,max-content);gap:10px;align-items:center;padding:12px 14px;
+  color:inherit;text-decoration:none;border-top:1px solid var(--line)}
+a.slot:first-child{border-top:0}
+a.slot:active{background:var(--chip)}
+.t{font-size:19px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.c{min-width:0}
+.c b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c span{display:block;color:var(--mut);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.p{text-align:right;font-size:13px;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--mut);line-height:1.5}
+.p em{font-style:normal;color:var(--acc);background:var(--acc-bg);padding:1px 6px;border-radius:6px;font-weight:600;font-size:12px}
+.tag{display:inline-block;font-size:11px;color:var(--warn);margin-left:6px;font-weight:500}
+.empty{color:var(--mut);text-align:center;padding:40px 10px}
+.clubs{font-size:14px}
+.clubs .list div{display:flex;justify-content:space-between;gap:10px;padding:11px 14px;border-top:1px solid var(--line)}
+.clubs .list div:first-child{border-top:0}
+.clubs a{color:var(--acc);text-decoration:none}
+.ok{color:var(--mut)} .ko{color:var(--warn)}
+.foot{color:var(--mut);font-size:12px;text-align:center;margin-top:24px}
+</style>
+</head>
+<body>
+<main>
+  <header id="hd">
+    <h1>Padel libre</h1>
+    <div class="meta" id="meta">Chargement…</div>
+    <div class="row" id="days"></div>
+    <div class="filters">
+      <select id="from" aria-label="Dès"></select>
+      <span>à</span>
+      <select id="to" aria-label="Jusqu'à"></select>
+      <select id="dur" aria-label="Durée">
+        <option value="60">≥ 60 min</option>
+        <option value="90">90 min</option>
+      </select>
+      <button id="clubsBtn" type="button">Clubs</button>
+    </div>
+    <div class="row" id="clubRow" hidden></div>
+  </header>
+  <div id="out"></div>
+  <section class="clubs" id="clubs"></section>
+  <p class="foot">Mis à jour automatiquement toutes les 15 min · usage privé</p>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const JF = ["dim.","lun.","mar.","mer.","jeu.","ven.","sam."];
+const MF = ["janv.","févr.","mars","avr.","mai","juin","juil.","août","sept.","oct.","nov.","déc."];
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem("padel:"+k); return v==null ? d : JSON.parse(v);}catch(e){return d} },
+  set(k, v){ try{ localStorage.setItem("padel:"+k, JSON.stringify(v)); }catch(e){} }
+};
+let DATA = null;
+const st = {
+  day: "all",
+  from: store.get("from", "17:00"),
+  to: store.get("to", "22:00"),
+  dur: store.get("dur", "60"),
+  off: new Set(store.get("off", [])),
+};
+
+const hours = [];
+for (let h = 6; h <= 23; h++) for (const m of ["00","30"]) hours.push(String(h).padStart(2,"0")+":"+m);
+for (const id of ["from","to"]) {
+  $("#"+id).innerHTML = hours.map(h => `<option>${h}</option>`).join("");
+  $("#"+id).value = st[id];
+  $("#"+id).onchange = e => { st[id] = e.target.value; store.set(id, st[id]); render(); };
+}
+$("#dur").value = st.dur;
+$("#dur").onchange = e => { st.dur = e.target.value; store.set("dur", st.dur); render(); };
+$("#clubsBtn").onclick = () => { $("#clubRow").hidden = !$("#clubRow").hidden; };
+addEventListener("scroll", () => $("#hd").classList.toggle("scrolled", scrollY > 4), {passive:true});
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const dayLabel = iso => {
+  const d = new Date(iso+"T12:00");
+  const t = new Date(); t.setHours(12,0,0,0);
+  const diff = Math.round((d - t)/864e5);
+  if (diff === 0) return "Aujourd'hui";
+  if (diff === 1) return "Demain";
+  return `${JF[d.getDay()]} ${d.getDate()} ${MF[d.getMonth()]}`;
+};
+const ago = iso => {
+  const m = Math.round((Date.now() - new Date(iso))/6e4);
+  return m < 1 ? "à l'instant" : m < 60 ? `il y a ${m} min` : `il y a ${Math.floor(m/60)} h ${m%60}`;
+};
+
+function matches(x){
+  const hm = x.debut.slice(11,16);
+  if (hm < st.from || hm > st.to) return false;
+  if (st.off.has(x.club)) return false;
+  if (!x.durees.some(d => d.min >= +st.dur)) return false;
+  if (new Date(x.debut) < new Date()) return false;
+  return true;
+}
+
+function render(){
+  if (!DATA) return;
+  const all = DATA.creneaux.filter(matches);
+  // Jours
+  const days = [...new Set(DATA.creneaux.map(x => x.debut.slice(0,10)))].sort();
+  const counts = {}; all.forEach(x => { const d = x.debut.slice(0,10); counts[d] = (counts[d]||0)+1; });
+  if (st.day !== "all" && !days.includes(st.day)) st.day = "all";
+  $("#days").innerHTML = [`<button class="chip" data-d="all" aria-pressed="${st.day==="all"}">Tout<small>${all.length}</small></button>`]
+    .concat(days.map(d => `<button class="chip" data-d="${d}" aria-pressed="${st.day===d}">${dayLabel(d)}<small>${counts[d]||0}</small></button>`)).join("");
+  $("#days").querySelectorAll("button").forEach(b => b.onclick = () => { st.day = b.dataset.d; render(); });
+
+  // Clubs (filtre)
+  const noms = DATA.clubs.filter(c => c.etat !== "lien").map(c => c.club);
+  $("#clubRow").innerHTML = noms.map(n => `<button class="chip" data-c="${esc(n)}" aria-pressed="${!st.off.has(n)}">${esc(n)}</button>`).join("");
+  $("#clubRow").querySelectorAll("button").forEach(b => b.onclick = () => {
+    const n = b.dataset.c; st.off.has(n) ? st.off.delete(n) : st.off.add(n);
+    store.set("off", [...st.off]); render();
+  });
+  $("#clubsBtn").textContent = st.off.size ? `Clubs (${noms.length - st.off.size}/${noms.length})` : "Clubs";
+
+  // Liste
+  const list = st.day === "all" ? all : all.filter(x => x.debut.startsWith(st.day));
+  const byDay = {};
+  list.forEach(x => (byDay[x.debut.slice(0,10)] ||= []).push(x));
+  let html = "";
+  for (const d of Object.keys(byDay).sort()) {
+    html += `<h2>${dayLabel(d)}</h2><div class="list">`;
+    for (const x of byDay[d]) {
+      const prix = x.durees.filter(u => u.min >= +st.dur || x.durees.length === 1)
+        .map(u => `${u.min}′${u.prix ? " · " + esc(u.prix) : ""}`).join("<br>");
+      const tags = (x.tags||[]).map(t => `<span class="tag">${t === "single" ? "simple (2 j.)" : t === "outdoor" ? "extérieur" : esc(t)}</span>`).join("");
+      html += `<a class="slot" href="${esc(x.url)}" target="_blank" rel="noopener">
+        <span class="t">${x.debut.slice(11,16)}</span>
+        <span class="c"><b>${esc(x.club)}${tags}</b><span>${esc(x.ville)} · ${esc(x.court)}</span></span>
+        <span class="p">${prix}</span></a>`;
+    }
+    html += `</div>`;
+  }
+  $("#out").innerHTML = html || `<div class="empty">Aucun terrain libre entre ${st.from} et ${st.to}.<br>Élargis la plage horaire ou les jours.</div>`;
+
+  // État des clubs
+  const etat = c => c.etat === "ok" ? `<span class="ok">${c.n} créneaux</span>`
+    : c.etat === "lien" ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">Ouvrir ↗</a>`
+    : `<span class="ko" title="${esc(c.erreur)}">indisponible</span>`;
+  $("#clubs").innerHTML = `<h2>Clubs suivis</h2><div class="list">` +
+    DATA.clubs.map(c => `<div><span>${esc(c.club)} <span class="ok">· ${esc(c.ville)}${c.note ? " · "+esc(c.note) : ""}</span></span>${etat(c)}</div>`).join("") + `</div>`;
+
+  $("#meta").innerHTML = `<b>${all.length}</b> créneaux libres · mis à jour ${ago(DATA.maj)}`;
+}
+
+async function load(){
+  try {
+    const r = await fetch("data.json?t=" + Date.now(), {cache: "no-store"});
+    DATA = await r.json();
+    render();
+  } catch (e) {
+    $("#meta").textContent = "Impossible de charger les données. Réessaie dans un instant.";
+  }
+}
+load();
+setInterval(load, 5*60*1000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+</script>
+</body>
+</html>

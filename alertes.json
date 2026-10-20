@@ -1,0 +1,21 @@
+{
+  "_aide": "Une notification part UNIQUEMENT quand un créneau se libère et correspond à une des règles. jours: lun mar mer jeu ven sam dim. clubs: vide = tous. sans_simple: ignore les terrains pour 2 joueurs.",
+  "alertes": [
+    {
+      "jours": ["lun", "mar", "mer", "jeu", "ven"],
+      "de": "18:00",
+      "a": "21:00",
+      "duree_min": 60,
+      "clubs": [],
+      "sans_simple": true
+    },
+    {
+      "jours": ["sam", "dim"],
+      "de": "10:00",
+      "a": "18:00",
+      "duree_min": 60,
+      "clubs": [],
+      "sans_simple": true
+    }
+  ]
+}
