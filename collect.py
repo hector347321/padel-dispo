@@ -542,7 +542,14 @@ def main():
         if not any(c["etat"] == "ok" for c in data["clubs"]):
             print("Playtomic injoignable, rien envoyé", file=sys.stderr)
             return
-        prev, sha = lire_gh("docs/playtomic.json", conf["token"])
+        try:
+            prev, sha = lire_gh("docs/playtomic.json", conf["token"])
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                print(f"JETON GITHUB REFUSÉ ({e.code}). Recrée-le (Contents : Read and write sur padel-dispo), "
+                      f"puis : rm ~/.padel-dispo.json et relance l'installateur.", file=sys.stderr)
+                sys.exit(1)
+            raise
         alertes, _ = lire_gh("alertes.json", conf["token"])
         global ALERTES_OVERRIDE
         ALERTES_OVERRIDE = (alertes or {}).get("alertes", [])
