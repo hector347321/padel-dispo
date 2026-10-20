@@ -1,25 +1,33 @@
 # Padel libre
 
 Créneaux de padel libres autour de Lausanne, mis à jour toutes les 15 minutes (6h–minuit). Usage privé.
+Page : https://hector347321.github.io/padel-dispo/
 
-**Clubs suivis** : Padel Parc Préverenges, Etoy, Yverdon, Vaudoise aréna (Playtomic) · Padel One Payerne (Playtomic) · Urban Padel Lausanne (Matchpoint) · Green Club Romanel et Centre Fairplay Puidoux (Tennis Online) · TC Stade-Lausanne et TC Morges (Plugin.ch) · Padel One Echandens (lien seulement, réservation via leur app).
+| Système | Clubs | Où ça tourne |
+|---|---|---|
+| Matchpoint | Urban Padel Lausanne | GitHub |
+| Tennis Online | Green Club Romanel, Centre Fairplay Puidoux | GitHub |
+| Plugin.ch | TC Stade-Lausanne, TC Morges | GitHub |
+| Playtomic | Padel Parc Préverenges, Etoy, Yverdon, Vaudoise aréna, Padel One Payerne | **Mac** (Playtomic refuse les serveurs GitHub) |
+| — | Padel One Echandens | lien seulement (réservation via leur app) |
 
 ## Sur iPhone
-1. Ouvre la page dans **Safari** : `https://<ton-pseudo>.github.io/padel-dispo/`
-2. Bouton Partager → **Sur l'écran d'accueil**. Elle s'ouvre ensuite comme une app.
-3. Filtres (jour, heures, durée, clubs) : ils sont mémorisés sur le téléphone.
+Safari → la page → Partager → **Sur l'écran d'accueil**. Filtres (jour, heures, durée, clubs) mémorisés sur le téléphone.
 
-## Notifications
-- Installe l'app gratuite **ntfy** et abonne-toi au sujet enregistré dans le secret `NTFY_TOPIC` du dépôt.
-- Les règles sont dans `alertes.json` (modifiable directement sur github.com, icône crayon) :
-  jours, plage horaire, durée minimale, clubs. Une notification part **seulement** quand un créneau
-  se libère et correspond à une règle.
+## Alertes (dates précises)
+Bouton **🔔 Alertes** sur la page : choisis une ou plusieurs dates, une plage horaire, une durée et éventuellement des clubs.
+Une notification ntfy part **uniquement** quand un créneau se libère dans une de ces plages. Les dates passées sont retirées automatiquement.
+L'enregistrement se fait dans `alertes.json` via un jeton GitHub (fine-grained, ce dépôt seulement, *Contents : Read and write*), saisi une fois sur le téléphone.
+
+## Partie Mac (Playtomic)
+```
+bash <(curl -fsSL https://raw.githubusercontent.com/hector347321/padel-dispo/main/mac/installer.sh)
+```
+Demande le même jeton GitHub. Tourne toutes les 15 min quand le Mac est allumé et télécharge toujours la dernière version du collecteur.
 
 ## Fichiers
-- `collect.py` : récupère les créneaux (Python, sans dépendance) → `docs/data.json`
-- `docs/index.html` : la page iPhone
-- `alertes.json` : tes règles de notification
-- `.github/workflows/collect.yml` : exécution automatique toutes les 15 min
-- `tests/` : `python3 tests/test_collect.py`
-
-Lancer à la main : `python3 collect.py`
+- `collect.py` : collecteur (Python, sans dépendance). `python3 collect.py` (GitHub) · `python3 collect.py --mac` (Playtomic)
+- `docs/` : la page (`index.html`), `data.json` (GitHub), `playtomic.json` (Mac)
+- `alertes.json` : tes alertes
+- `.github/workflows/collect.yml` : exécution toutes les 15 min
+- `tests/test_collect.py` : tests hors-ligne des lecteurs

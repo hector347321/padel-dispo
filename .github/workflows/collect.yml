@@ -38,4 +38,6 @@ jobs:
           git config user.name "padel-bot"
           git config user.email "padel-bot@users.noreply.github.com"
           git add docs/data.json
-          git diff --cached --quiet || git commit -m "créneaux $(date -u +%H:%M)" && git push
+          git diff --cached --quiet && exit 0
+          git commit -m "créneaux $(date -u +%H:%M)"
+          for i in 1 2 3; do git pull --rebase -q origin main && git push && break; sleep 5; done

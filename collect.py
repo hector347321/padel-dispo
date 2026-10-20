@@ -10,6 +10,7 @@ Python 3.9+, aucune dépendance.
 """
 
 import http.cookiejar
+import urllib.error
 import json
 import os
 import re
@@ -396,7 +397,12 @@ SOURCES = {"playtomic": playtomic, "matchpoint": matchpoint, "plugin": plugin, "
 JOURS_NOMS = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
 
 
+ALERTES_OVERRIDE = None
+
+
 def charger_alertes():
+    if ALERTES_OVERRIDE is not None:
+        return ALERTES_OVERRIDE
     f = ROOT / "alertes.json"
     if not f.exists():
         return []
@@ -454,11 +460,34 @@ def cle(x):
     return f"{x['club']}|{x['court']}|{x['debut']}"
 
 
-def main():
+REPO = os.environ.get("PADEL_REPO", "hector347321/padel-dispo")
+CONF_MAC = Path.home() / ".padel-dispo.json"   # {"token": "...", "ntfy": "..."} sur le Mac
+
+
+def gh(method, chemin, token, corps=None):
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{REPO}/contents/{chemin}",
+        data=json.dumps(corps).encode() if corps else None, method=method,
+        headers={"Accept": "application/vnd.github+json", "Authorization": f"Bearer {token}",
+                 "User-Agent": "padel-dispo"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.loads(r.read().decode())
+
+
+def lire_gh(chemin, token):
+    import base64
+    try:
+        j = gh("GET", chemin, token)
+        return json.loads(base64.b64decode(j["content"]).decode()), j["sha"]
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None, None
+        raise
+
+
+def collecter(clubs):
     creneaux, statuts = [], []
-    for club in CLUBS:
-        if club.get("off"):
-            continue
+    for club in clubs:
         st = {"club": club["nom"], "ville": club["ville"], "type": club["type"],
               "note": club.get("note"), "url": club.get("url") or club.get("base")
               or f"https://playtomic.com/fr/clubs/{club.get('slug')}"}
@@ -468,7 +497,6 @@ def main():
             continue
         try:
             res = SOURCES[club["type"]](club, Session())
-            # dédoublonnage
             vus, uniq = set(), []
             for x in res:
                 if cle(x) not in vus:
@@ -484,31 +512,66 @@ def main():
         if club.get("_info"):
             st["info"] = club["_info"]
         statuts.append(st)
-
     maintenant = datetime.now(TZ)
     creneaux = [x for x in creneaux if datetime.fromisoformat(x["debut"]).replace(tzinfo=TZ) > maintenant]
     creneaux.sort(key=lambda x: (x["debut"], x["club"], x["court"]))
+    return {"maj": maintenant.isoformat(timespec="minutes"), "clubs": statuts, "creneaux": creneaux}
 
-    # "Se libère" = absent au passage précédent, sur un jour déjà couvert,
-    # pour un club qui fonctionnait déjà (évite les alertes en masse à minuit
-    # ou quand un site revient après une panne).
-    if OUT.exists():
+
+def nouveaux(data, prev):
+    """'Se libère' = absent au passage précédent, sur un jour déjà couvert, pour un club
+    qui fonctionnait déjà (évite les alertes en masse à minuit ou après une panne)."""
+    if not prev:
+        return []
+    anciens = {cle(x) for x in prev["creneaux"]}
+    jours_prev = {x["debut"][:10] for x in prev["creneaux"]}
+    clubs_prev = {c["club"] for c in prev["clubs"] if c.get("etat") == "ok"}
+    return [x for x in data["creneaux"] if cle(x) not in anciens
+            and x["debut"][:10] in jours_prev and x["club"] in clubs_prev]
+
+
+def main():
+    mac = "--mac" in sys.argv
+    actifs = [c for c in CLUBS if not c.get("off")]
+    if mac:
+        # Sur le Mac : seulement Playtomic (qui refuse les serveurs GitHub), envoyé dans le dépôt
+        conf = json.loads(CONF_MAC.read_text())
+        os.environ.setdefault("NTFY_TOPIC", conf.get("ntfy", ""))
+        os.environ.setdefault("PAGE_URL", f"https://{REPO.split('/')[0]}.github.io/{REPO.split('/')[1]}/")
+        data = collecter([c for c in actifs if c["type"] == "playtomic"])
+        if not any(c["etat"] == "ok" for c in data["clubs"]):
+            print("Playtomic injoignable, rien envoyé", file=sys.stderr)
+            return
+        prev, sha = lire_gh("docs/playtomic.json", conf["token"])
+        alertes, _ = lire_gh("alertes.json", conf["token"])
+        global ALERTES_OVERRIDE
+        ALERTES_OVERRIDE = (alertes or {}).get("alertes", [])
         try:
-            prev = json.loads(OUT.read_text())
-            anciens = {cle(x) for x in prev["creneaux"]}
-            jours_prev = {x["debut"][:10] for x in prev["creneaux"]}
-            clubs_prev = {c["club"] for c in prev["clubs"] if c.get("etat") == "ok"}
-            notifier([x for x in creneaux if cle(x) not in anciens
-                      and x["debut"][:10] in jours_prev and x["club"] in clubs_prev])
+            notifier(nouveaux(data, prev))
         except Exception as e:
             print("notif:", e, file=sys.stderr)
+        import base64
+        corps = {"message": f"playtomic {data['maj'][11:16]}",
+                 "content": base64.b64encode(json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode()).decode()}
+        if sha:
+            corps["sha"] = sha
+        gh("PUT", "docs/playtomic.json", conf["token"], corps)
+        print(f"→ {len(data['creneaux'])} créneaux Playtomic envoyés")
+        return
 
+    # Sur GitHub : tous les clubs sauf Playtomic (géré par le Mac)
+    data = collecter([c for c in actifs if c["type"] != "playtomic"])
+    data["clubs"] += [{"club": c["nom"], "ville": c["ville"], "type": "playtomic", "note": c.get("note"),
+                       "url": f"https://playtomic.com/fr/clubs/{c['slug']}", "etat": "mac"}
+                      for c in actifs if c["type"] == "playtomic"]
+    if OUT.exists():
+        try:
+            notifier(nouveaux(data, json.loads(OUT.read_text())))
+        except Exception as e:
+            print("notif:", e, file=sys.stderr)
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps({
-        "maj": maintenant.isoformat(timespec="minutes"),
-        "clubs": statuts, "creneaux": creneaux,
-    }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    print(f"→ {len(creneaux)} créneaux, {OUT}")
+    OUT.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    print(f"→ {len(data['creneaux'])} créneaux, {OUT}")
 
 
 if __name__ == "__main__":

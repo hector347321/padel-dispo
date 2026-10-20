@@ -241,7 +241,7 @@ function render(){
   // État des clubs
   const etat = c => c.etat === "ok" ? `<span class="ok">${c.n} créneaux</span>`
     : c.etat === "lien" ? `<a href="${esc(c.url)}" target="_blank" rel="noopener">Ouvrir ↗</a>`
-    : `<span class="ko" title="${esc(c.erreur)}">indisponible</span>`;
+    : `<span class="ko">${/Mac/.test(c.erreur || "") ? esc(c.erreur) : "indisponible"}</span>`;
   $("#clubs").innerHTML = `<h2>Clubs suivis</h2><div class="list">` +
     DATA.clubs.map(c => `<div><span>${esc(c.club)} <span class="ok">· ${esc(c.ville)}${c.note ? " · "+esc(c.note) : ""}</span></span>${etat(c)}</div>`).join("") + `</div>`;
 
@@ -274,7 +274,7 @@ async function loadAlertes(){
 
 async function saveAlertes(){
   const msg = $("#saveMsg");
-  if (!token()) { renderToken(true); msg.className = "msg err"; msg.textContent = "Connecte d'abord GitHub (en bas) pour enregistrer."; return false; }
+  if (!token()) { AL.pending = true; renderToken(true); msg.className = "msg err"; msg.textContent = "Connecte GitHub (en bas) : ton alerte sera enregistrée juste après."; return false; }
   msg.className = "msg"; msg.textContent = "Enregistrement…";
   // Nettoyage : on retire les dates passées
   const today = new Date().toISOString().slice(0,10);
@@ -395,7 +395,19 @@ function renderToken(open){
   if ($("#tokSave")) $("#tokSave").onclick = async () => {
     const v = $("#tokIn").value.trim(); if (!v) return;
     store.set("ghtoken", v);
-    try { await loadAlertes(); renderRules(); renderToken(false); $("#saveMsg").className = "msg ok"; $("#saveMsg").textContent = "GitHub connecté ✓"; }
+    try {
+      const local = AL.rules;
+      await loadAlertes();
+      renderToken(false);
+      if (AL.pending) {
+        const vus = new Set(AL.rules.map(r => JSON.stringify(r)));
+        AL.rules = AL.rules.concat(local.filter(r => !vus.has(JSON.stringify(r))));
+        AL.pending = false;
+        renderRules(); await saveAlertes();
+      } else {
+        renderRules(); $("#saveMsg").className = "msg ok"; $("#saveMsg").textContent = "GitHub connecté ✓";
+      }
+    }
     catch (e) { store.set("ghtoken", ""); renderToken(true); $("#saveMsg").className = "msg err"; $("#saveMsg").textContent = "Jeton refusé, vérifie-le."; }
   };
 }
@@ -412,8 +424,24 @@ $("#addRule").onclick = () => openForm(null);
 
 async function load(){
   try {
-    const r = await fetch("data.json?t=" + Date.now(), {cache: "no-store"});
-    DATA = await r.json();
+    const [r, rp] = await Promise.all([
+      fetch("data.json?t=" + Date.now(), {cache: "no-store"}),
+      fetch("playtomic.json?t=" + Date.now(), {cache: "no-store"}).catch(() => null)
+    ]);
+    const d = await r.json();
+    // Playtomic est récupéré par le Mac (Playtomic refuse les serveurs GitHub)
+    let p = null;
+    try { if (rp && rp.ok) p = await rp.json(); } catch (e) {}
+    const age = p ? (Date.now() - new Date(p.maj)) / 6e4 : Infinity;
+    const frais = age < 60;
+    if (p && frais) d.creneaux = d.creneaux.concat(p.creneaux).sort((a, b) => a.debut.localeCompare(b.debut));
+    d.clubs = d.clubs.map(c => {
+      if (c.etat !== "mac") return c;
+      const pc = p && p.clubs.find(x => x.club === c.club);
+      if (pc && frais) return pc;
+      return {...c, etat: "erreur", erreur: p ? `Mac hors ligne (dernières données ${ago(p.maj)})` : "Mac pas encore configuré"};
+    });
+    DATA = d;
     render();
   } catch (e) {
     $("#meta").textContent = "Impossible de charger les données. Réessaie dans un instant.";
