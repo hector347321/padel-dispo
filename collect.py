@@ -32,11 +32,12 @@ UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTM
 # type: playtomic | matchpoint | plugin | tennisonline | lien
 CLUBS = [
     {"nom": "Padel Parc Préverenges", "ville": "Préverenges", "type": "playtomic",
-     "slug": "padel-parc-preverenges"},
+     "slug": "padel-parc-preverenges", "tenant": "dbfb6961-6d55-4075-baae-f5966c0e4f03"},
     {"nom": "Padel Parc Etoy", "ville": "Etoy", "type": "playtomic",
-     "slug": "padel-parc-etoy"},
+     "slug": "padel-parc-etoy", "tenant": "6e4cde43-4fa9-45a9-9326-d94dcb526c6b"},
     {"nom": "Vaudoise aréna", "ville": "Prilly", "type": "playtomic",
-     "slug": "vaudoise-arena", "note": "Extérieur, avril–été"},
+     "slug": "vaudoise-arena", "tenant": "53b5aaf2-7449-4691-96f8-a582ce37144b",
+     "note": "Extérieur, avril–été"},
     {"nom": "Urban Padel", "ville": "Lausanne (Beaulieu)", "type": "matchpoint",
      "base": "https://urbanpadellausanne.matchpoint.com.es",
      "prix": "Prix dans l'app"},
@@ -56,9 +57,9 @@ CLUBS = [
      "note": "Réservation uniquement dans l'app Padel One"},
     # Un peu plus loin (désactive en mettant "off": True)
     {"nom": "Padel Parc Yverdon", "ville": "Yverdon", "type": "playtomic",
-     "slug": "padel-parc-yverdon"},
+     "slug": "padel-parc-yverdon", "tenant": "4613ab9b-740d-4226-ab3a-28651fd33ef5"},
     {"nom": "Padel One Payerne", "ville": "Payerne", "type": "playtomic",
-     "slug": "padel-one-payerne"},
+     "slug": "padel-one-payerne", "tenant": "e03e742b-c7fe-4fcf-b3de-ea555a0750e3"},
 ]
 
 
@@ -157,19 +158,57 @@ class Tree(HTMLParser):
 
 
 # ─────────────────────────── PLAYTOMIC ───────────────────────────
-def playtomic(club, s):
+def _playtomic_api(club, s):
+    """API publique api.playtomic.io (accessible depuis un serveur)."""
+    tid = club["tenant"]
+    t = json.loads(s.get(f"https://api.playtomic.io/v1/tenants/{tid}", {"Accept": "application/json"}))
+    courts = {}
+    for r in t.get("resources", []):
+        if r.get("sport_id", "PADEL") != "PADEL":
+            continue
+        p = r.get("properties") or {}
+        feats = [str(v).lower() for v in p.values()]
+        courts[r["resource_id"]] = (r.get("name", "Terrain"), feats)
+
+    def dispo(d):
+        q = urllib.parse.urlencode({"user_id": "me", "tenant_id": tid, "sport_id": "PADEL",
+                                    "local_start_min": f"{d}T00:00:00", "local_start_max": f"{d}T23:59:59"})
+        return json.loads(s.get(f"https://api.playtomic.io/v1/availability?{q}", {"Accept": "application/json"}))
+    return courts, dispo
+
+
+def _playtomic_web(club, s):
+    """Site playtomic.com (bloque parfois les serveurs, d'où le plan B ci-dessus)."""
     page_url = f"https://playtomic.com/fr/clubs/{club['slug']}"
     h = s.get(page_url).replace('\\\\"', '"').replace('\\"', '"')
-    tid = re.search(r'"tenant_id":"([0-9a-f-]{36})"', h).group(1)
+    tid = club.get("tenant") or re.search(r'"tenant_id":"([0-9a-f-]{36})"', h).group(1)
     courts = {}
     for rid, name, feats in re.findall(
             r'"resourceId":"([0-9a-f-]{36})","name":"([^"]+)","sport":"PADEL","features":\[([^\]]*)\]', h):
         courts[rid] = (name, re.findall(r'"(\w+)"', feats))
-    out = []
-    for d in jours():
-        data = json.loads(s.get(
+
+    def dispo(d):
+        return json.loads(s.get(
             f"https://playtomic.com/api/clubs/availability?tenant_id={tid}&date={d}&sport_id=PADEL",
             {"Accept": "application/json"}))
+    return courts, dispo
+
+
+def playtomic(club, s):
+    page_url = f"https://playtomic.com/fr/clubs/{club['slug']}"
+    erreurs = []
+    for mode in ((_playtomic_api, _playtomic_web) if club.get("tenant") else (_playtomic_web,)):
+        try:
+            courts, dispo = mode(club, s)
+            dispo(jours()[0])
+            break
+        except Exception as e:
+            erreurs.append(f"{mode.__name__}: {e}")
+    else:
+        raise RuntimeError(" | ".join(erreurs))
+    out = []
+    for d in jours():
+        data = dispo(d)
         for bloc in data:
             name, feats = courts.get(bloc["resource_id"], ("Terrain", []))
             par_debut = {}
@@ -181,7 +220,7 @@ def playtomic(club, s):
                 # Playtomic renvoie l'heure en UTC (vérifié le 20.10.2026)
                 debut = datetime.fromisoformat(f"{bloc.get('start_date', d)}T{hhmmss}").replace(
                     tzinfo=timezone.utc).astimezone(TZ)
-                tags = [f for f in feats if f in ("single", "outdoor")]
+                tags = sorted({f for f in feats if f in ("single", "outdoor")})
                 out.append(slot(club, name, debut, sorted(durees), page_url, tags))
     return out
 
@@ -195,12 +234,19 @@ def matchpoint(club, s):
     key = m.group(2)
     srv = f"{base}/booking/srvc.aspx"
     cuadros = s.post_json(f"{srv}/ObtenerCuadros", {"key": key})["d"]
+    info = {"cle": key[:6], "cuadros": [(c.get("Id"), c.get("Nombre")) for c in (cuadros or [])], "jours": []}
+    club["_info"] = info
     cuadros = [c for c in cuadros if "padel" in (c.get("Nombre") or "").lower()] or cuadros
     out = []
     for c in cuadros:
         for d in jours():
             q = s.post_json(f"{srv}/ObtenerCuadro",
                             {"idCuadro": c["Id"], "fecha": d.strftime("%d/%m/%Y"), "key": key})["d"]
+            if not isinstance(q, dict):
+                info["jours"].append(str(q)[:120])
+                continue
+            info["jours"].append([str(q.get("StrFecha")), len(q.get("Columnas") or []),
+                                  sum(len(col.get("HorariosFijos") or []) for col in q.get("Columnas") or [])])
             for col in q.get("Columnas", []):
                 for h in col.get("HorariosFijos", []) or []:
                     hh, mm = map(int, h["StrHoraInicio"].split(":"))
@@ -409,6 +455,8 @@ def main():
             st["etat"], st["erreur"] = "erreur", f"{type(e).__name__}: {e}"[:200]
             print(f"{club['nom']}: ERREUR {e}", file=sys.stderr)
             traceback.print_exc()
+        if club.get("_info"):
+            st["info"] = club["_info"]
         statuts.append(st)
 
     maintenant = datetime.now(TZ)
