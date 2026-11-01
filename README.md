@@ -9,7 +9,7 @@ Page : https://hector347321.github.io/padel-dispo/
 | Tennis Online | Green Club Romanel, Centre Fairplay Puidoux | GitHub |
 | Plugin.ch | TC Stade-Lausanne, TC Morges | GitHub |
 | Playtomic | Padel Parc Préverenges, Etoy, Yverdon, Vaudoise aréna, Padel One Payerne | **Mac** (Playtomic refuse les serveurs GitHub) |
-| — | Padel One Echandens | lien seulement (réservation via leur app) |
+| Matchpoint | Padel One Echandens | GitHub |
 
 ## Sur iPhone
 Safari → la page → Partager → **Sur l'écran d'accueil**. Filtres (jour, heures, durée, clubs) mémorisés sur le téléphone.

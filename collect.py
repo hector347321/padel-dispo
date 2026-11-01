@@ -53,9 +53,9 @@ CLUBS = [
      "prix": "42 CHF", "note": "Extérieur, non-membres bienvenus"},
     {"nom": "TC Morges", "ville": "Morges", "type": "plugin",
      "base": "https://tcmorges.plugin.ch", "note": "Extérieur"},
-    {"nom": "Padel One", "ville": "Echandens", "type": "lien",
-     "url": "https://www.padel-one.ch/jouer",
-     "note": "Réservation uniquement dans l'app Padel One"},
+    {"nom": "Padel One Echandens", "ville": "Echandens", "type": "matchpoint",
+     "base": "https://padelone-ch.matchpoint.com.es", "cuadro": "echandens",
+     "note": "Réservation dans l'app Padel One CH"},
     # Un peu plus loin (désactive en mettant "off": True)
     {"nom": "Padel Parc Yverdon", "ville": "Yverdon", "type": "playtomic",
      "slug": "padel-parc-yverdon", "tenant": "4613ab9b-740d-4226-ab3a-28651fd33ef5"},
@@ -259,7 +259,12 @@ def matchpoint(club, s):
     cuadros = s.post_json(f"{srv}/ObtenerCuadros", {"key": key})["d"]
     info = {"cle": key[:6], "cuadros": [(c.get("Id"), c.get("Nombre")) for c in (cuadros or [])], "jours": []}
     club["_info"] = info
-    cuadros = [c for c in cuadros if "padel" in (c.get("Nombre") or "").lower()] or cuadros
+    if club.get("cuadro"):   # portail partagé entre plusieurs centres : garder le bon
+        cuadros = [c for c in cuadros if club["cuadro"] in (c.get("Nombre") or "").lower()]
+        if not cuadros:
+            raise RuntimeError(f"grille « {club['cuadro']} » introuvable")
+    else:
+        cuadros = [c for c in cuadros if "padel" in (c.get("Nombre") or "").lower()] or cuadros
     out = []
     for c in cuadros:
         for d in jours():
@@ -276,8 +281,10 @@ def matchpoint(club, s):
                 for h in col.get("HorariosFijos", []) or []:
                     hh, mm = map(int, h["StrHoraInicio"].split(":"))
                     debut = datetime(d.year, d.month, d.day, hh, mm, tzinfo=TZ)
-                    out.append(slot(club, col.get("TextoPrincipal", "Terrain"), debut,
-                                    [(int(h.get("Minutos", 60)), None)], f"{base}/Booking/Grid.aspx"))
+                    nom = re.sub(r"\s+", " ", col.get("TextoPrincipal") or "Terrain").strip()
+                    tags = ["single"] if re.search(r"simple|single", nom, re.I) else []
+                    out.append(slot(club, nom, debut, [(int(h.get("Minutos", 60)), club.get("prix"))],
+                                    club.get("url") or f"{base}/Booking/Grid.aspx", tags))
     return out
 
 

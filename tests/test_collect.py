@@ -93,6 +93,19 @@ check("Matchpoint clé", f.calls[1][1]["key"].startswith("eNEe29"))
 check("Matchpoint date fr", f.calls[2][1]["fecha"] == today.strftime("%d/%m/%Y"))
 check("Matchpoint créneaux", sorted(x["debut"][11:] for x in r if x["debut"][:10] == str(today)) == ["09:15", "21:15"])
 
+# ── Matchpoint, portail partagé (Padel One : St-Maurice, Payerne, Echandens) ──
+grilles = {6: "Padel One St-Maurice", 4: "Padel Payerne", 5: "Padel Echandens"}
+cols5 = {"d": {"Columnas": [
+    {"TextoPrincipal": "Terrain  4", "HorariosFijos": [{"StrHoraInicio": "21:30", "Minutos": 90}]},
+    {"TextoPrincipal": "Terrain simple - Padel Select", "HorariosFijos": [{"StrHoraInicio": "20:00", "Minutos": 60}]}]}}
+f = Fake({"Grid.aspx": grid,
+          "ObtenerCuadros": lambda p: {"d": [{"Id": k, "Nombre": v} for k, v in grilles.items()]},
+          "ObtenerCuadro": lambda p: cols5 if p["idCuadro"] == 5 else {"d": {"Columnas": [
+              {"TextoPrincipal": "AUTRE", "HorariosFijos": [{"StrHoraInicio": "10:00", "Minutos": 90}]}]}}})
+r = c.matchpoint({"nom": "Padel One Echandens", "ville": "Echandens", "base": "https://p", "cuadro": "echandens"}, f)
+check("Echandens : seule la bonne grille", {x["court"] for x in r} == {"Terrain 4", "Terrain simple - Padel Select"})
+check("Echandens : terrain simple tagué", [x["tags"] for x in r if "simple" in x["court"]][0] == ["single"])
+
 # ── Playtomic ──
 page = ('x \\"tenant_id\\":\\"dbfb6961-6d55-4075-baae-f5966c0e4f03\\" y '
         '\\"resourceId\\":\\"502a3a3e-ac6d-4bdb-9a1c-c05c56644f97\\",\\"name\\":\\"Single Padel\\",'
