@@ -291,14 +291,24 @@ def matchpoint(club, s):
 # ─────────────────────────── PLUGIN.CH ───────────────────────────
 def plugin(club, s):
     base = club["base"]
-    home = s.get(f"{base}/dashboardV2")
+    def trouver(page):
+        for href, txt in re.findall(r'<a[^>]+href=["\']([^"\']*dashboard/sport/\d+/\d+)["\'][^>]*>(.*?)</a>', page, re.S):
+            if "padel" in txt.lower():          # texte du lien ou alt="Padel" de son image
+                return urllib.parse.urljoin(base + "/", href)
+        # Secours : un lien sport suivi de près par le mot Padel
+        m = re.search(r'(dashboard/sport/\d+/\d+)[\s\S]{0,600}?padel', page, re.I)
+        return urllib.parse.urljoin(base + "/", "/" + m.group(1)) if m else None
+
     lien = None
-    for href, txt in re.findall(r'<a[^>]+href="([^"]*dashboard/sport/\d+/\d+)"[^>]*>(.*?)</a>', home, re.S):
-        if "padel" in re.sub(r"<[^>]+>", " ", txt).lower():
-            lien = urllib.parse.urljoin(base + "/", href)
+    for essai in range(2):
+        home = s.get(f"{base}/dashboardV2" if essai == 0 else f"{base}/")
+        lien = trouver(home)
+        if lien:
             break
     if not lien:
-        raise RuntimeError("catégorie Padel introuvable")
+        titre = re.search(r"<title>(.*?)</title>", home, re.S)
+        raise RuntimeError(f"catégorie Padel introuvable (page « {titre.group(1).strip()[:60] if titre else '?'} », "
+                           f"{len(home)} car., liens sport : {re.findall(r'dashboard/sport/[0-9/]+', home)[:4]})")
     s.get(lien)
     out = []
     for d in jours():
