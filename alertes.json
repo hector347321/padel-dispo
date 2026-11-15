@@ -15,7 +15,8 @@
       "sans_simple": true,
       "dates": [
         "2026-11-18"
-      ]
+      ],
+      "actif": false
     }
   ]
 }
