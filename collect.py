@@ -495,11 +495,34 @@ def lire_gh(chemin, token):
     import base64
     try:
         j = gh("GET", chemin, token)
-        return json.loads(base64.b64decode(j["content"]).decode()), j["sha"]
     except urllib.error.HTTPError as e:
         if e.code == 404:
             return None, None
         raise
+    if j.get("content"):
+        brut = base64.b64decode(j["content"]).decode()
+    else:  # fichier > 1 Mo : l'API ne renvoie pas le contenu, on passe par le lien de téléchargement
+        req = urllib.request.Request(j["download_url"], headers={"Authorization": f"Bearer {token}",
+                                                                 "User-Agent": "padel-dispo"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            brut = r.read().decode()
+    return json.loads(brut), j["sha"]
+
+
+def ecrire_gh(chemin, data, sha, token, message):
+    import base64
+    corps = {"message": message, "content": base64.b64encode(
+        json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode()).decode()}
+    if sha:
+        corps["sha"] = sha
+    try:
+        gh("PUT", chemin, token, corps)
+    except urllib.error.HTTPError as e:
+        if e.code not in (409, 422):
+            raise
+        _, sha = lire_gh(chemin, token)       # quelqu'un a écrit entre-temps : on réessaie une fois
+        corps["sha"] = sha
+        gh("PUT", chemin, token, corps)
 
 
 def collecter(clubs):
@@ -547,50 +570,85 @@ def nouveaux(data, prev):
             and x["debut"][:10] in jours_prev and x["club"] in clubs_prev]
 
 
+FRAIS_MIN = 40   # au-delà, GitHub considère le Mac comme éteint et prend le relais
+
+
+def placeholders_mac(actifs):
+    return [{"club": c["nom"], "ville": c["ville"], "type": "playtomic", "note": c.get("note"),
+             "url": f"https://playtomic.com/fr/clubs/{c['slug']}", "etat": "mac"}
+            for c in actifs if c["type"] == "playtomic"]
+
+
+def separer(data, actifs):
+    """Coupe un passage complet en deux fichiers : playtomic.json et data.json (le reste)."""
+    pt = {c["nom"] for c in actifs if c["type"] == "playtomic"}
+    d_pt = {"maj": data["maj"], "source": "mac",
+            "clubs": [c for c in data["clubs"] if c["club"] in pt],
+            "creneaux": [x for x in data["creneaux"] if x["club"] in pt]}
+    d_gh = {"maj": data["maj"], "source": "mac",
+            "clubs": [c for c in data["clubs"] if c["club"] not in pt] + placeholders_mac(actifs),
+            "creneaux": [x for x in data["creneaux"] if x["club"] not in pt]}
+    return d_pt, d_gh
+
+
 def main():
     mac = "--mac" in sys.argv
     actifs = [c for c in CLUBS if not c.get("off")]
     if mac:
-        # Sur le Mac : seulement Playtomic (qui refuse les serveurs GitHub), envoyé dans le dépôt
+        # Sur le Mac (fiable toutes les 15 min) : TOUS les clubs, envoyés dans le dépôt
         conf = json.loads(CONF_MAC.read_text())
         os.environ.setdefault("NTFY_TOPIC", conf.get("ntfy", ""))
         os.environ.setdefault("PAGE_URL", f"https://{REPO.split('/')[0]}.github.io/{REPO.split('/')[1]}/")
-        data = collecter([c for c in actifs if c["type"] == "playtomic"])
-        if not any(c["etat"] == "ok" for c in data["clubs"]):
-            print("Playtomic injoignable, rien envoyé", file=sys.stderr)
-            return
+        token = conf["token"]
         try:
-            prev, sha = lire_gh("docs/playtomic.json", conf["token"])
+            prev_pt, sha_pt = lire_gh("docs/playtomic.json", token)
         except urllib.error.HTTPError as e:
             if e.code in (401, 403):
                 print(f"JETON GITHUB REFUSÉ ({e.code}). Recrée-le (Contents : Read and write sur padel-dispo), "
                       f"puis : rm ~/.padel-dispo.json et relance l'installateur.", file=sys.stderr)
                 sys.exit(1)
             raise
-        alertes, _ = lire_gh("alertes.json", conf["token"])
+        prev_gh, sha_gh = lire_gh("docs/data.json", token)
+        alertes, _ = lire_gh("alertes.json", token)
         global ALERTES_OVERRIDE
         ALERTES_OVERRIDE = (alertes or {}).get("alertes", [])
+
+        d_pt, d_gh = separer(collecter(actifs), actifs)
+        ok = lambda d: any(c.get("etat") == "ok" for c in d["clubs"])
+        a_notifier = []
+        if ok(d_pt):
+            a_notifier += nouveaux(d_pt, prev_pt)
+        if ok(d_gh):
+            a_notifier += nouveaux(d_gh, prev_gh)
         try:
-            notifier(nouveaux(data, prev))
+            notifier(a_notifier)
         except Exception as e:
             print("notif:", e, file=sys.stderr)
-        import base64
-        corps = {"message": f"playtomic {data['maj'][11:16]}",
-                 "content": base64.b64encode(json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode()).decode()}
-        if sha:
-            corps["sha"] = sha
-        gh("PUT", "docs/playtomic.json", conf["token"], corps)
-        print(f"→ {len(data['creneaux'])} créneaux Playtomic envoyés")
+        heure = d_pt["maj"][11:16]
+        if ok(d_pt):
+            ecrire_gh("docs/playtomic.json", d_pt, sha_pt, token, f"playtomic {heure}")
+        if ok(d_gh):
+            ecrire_gh("docs/data.json", d_gh, sha_gh, token, f"créneaux (Mac) {heure}")
+        print(f"→ envoyé : {len(d_pt['creneaux'])} Playtomic, {len(d_gh['creneaux'])} autres clubs")
         return
 
-    # Sur GitHub : tous les clubs sauf Playtomic (géré par le Mac)
-    data = collecter([c for c in actifs if c["type"] != "playtomic"])
-    data["clubs"] += [{"club": c["nom"], "ville": c["ville"], "type": "playtomic", "note": c.get("note"),
-                       "url": f"https://playtomic.com/fr/clubs/{c['slug']}", "etat": "mac"}
-                      for c in actifs if c["type"] == "playtomic"]
+    # Sur GitHub : secours seulement, si le Mac n'a rien envoyé depuis FRAIS_MIN minutes
+    prev = None
     if OUT.exists():
         try:
-            notifier(nouveaux(data, json.loads(OUT.read_text())))
+            prev = json.loads(OUT.read_text())
+            age = (datetime.now(TZ) - datetime.fromisoformat(prev["maj"])).total_seconds() / 60
+            if age < FRAIS_MIN and "--force" not in sys.argv:
+                print(f"Données du Mac à jour (il y a {age:.0f} min), rien à faire.")
+                return
+        except Exception as e:
+            print("lecture data.json:", e, file=sys.stderr)
+    data = collecter([c for c in actifs if c["type"] != "playtomic"])
+    data["source"] = "github"
+    data["clubs"] += placeholders_mac(actifs)
+    if prev:
+        try:
+            notifier(nouveaux(data, prev))
         except Exception as e:
             print("notif:", e, file=sys.stderr)
     OUT.parent.mkdir(parents=True, exist_ok=True)

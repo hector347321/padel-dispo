@@ -2,7 +2,7 @@ name: Créneaux padel
 
 on:
   schedule:
-    # Toutes les 15 min de 6h à minuit (heure suisse ≈ UTC+1/+2)
+    # Secours si le Mac est éteint (GitHub ne lance en pratique que quelques passages par jour)
     - cron: "*/15 4-22 * * *"
   workflow_dispatch:
   push:
@@ -40,4 +40,4 @@ jobs:
           git add docs/data.json
           git diff --cached --quiet && exit 0
           git commit -m "créneaux $(date -u +%H:%M)"
-          for i in 1 2 3; do git pull --rebase -q origin main && git push && break; sleep 5; done
+          for i in 1 2 3; do git pull --rebase -X ours -q origin main && git push && break; sleep 5; done

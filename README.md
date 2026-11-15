@@ -1,15 +1,15 @@
 # Padel libre
 
-Créneaux de padel libres autour de Lausanne, mis à jour toutes les 15 minutes (6h–minuit). Usage privé.
+Créneaux de padel libres autour de Lausanne, mis à jour toutes les 15 minutes par le Mac (GitHub prend le relais, plus lentement, quand le Mac est éteint). Usage privé.
 Page : https://hector347321.github.io/padel-dispo/
 
-| Système | Clubs | Où ça tourne |
+| Système | Clubs | Lecteur |
 |---|---|---|
-| Matchpoint | Urban Padel Lausanne | GitHub |
-| Tennis Online | Green Club Romanel, Centre Fairplay Puidoux | GitHub |
-| Plugin.ch | TC Stade-Lausanne, TC Morges | GitHub |
-| Playtomic | Padel Parc Préverenges, Etoy, Yverdon, Vaudoise aréna, Padel One Payerne | **Mac** (Playtomic refuse les serveurs GitHub) |
-| Matchpoint | Padel One Echandens | GitHub |
+| Matchpoint | Urban Padel Lausanne | Mac, secours GitHub |
+| Tennis Online | Green Club Romanel, Centre Fairplay Puidoux | Mac, secours GitHub |
+| Plugin.ch | TC Stade-Lausanne, TC Morges | Mac, secours GitHub |
+| Playtomic | Padel Parc Préverenges, Etoy, Yverdon, Vaudoise aréna, Padel One Payerne | Mac uniquement (Playtomic refuse les serveurs GitHub) |
+| Matchpoint | Padel One Echandens | Mac, secours GitHub |
 
 ## Sur iPhone
 Safari → la page → Partager → **Sur l'écran d'accueil**. Filtres (jour, heures, durée, clubs) mémorisés sur le téléphone.
@@ -23,7 +23,7 @@ L'enregistrement se fait dans `alertes.json` via un jeton GitHub (fine-grained, 
 ```
 bash <(curl -fsSL https://raw.githubusercontent.com/hector347321/padel-dispo/main/mac/installer.sh)
 ```
-Demande le même jeton GitHub. Tourne toutes les 15 min quand le Mac est allumé et télécharge toujours la dernière version du collecteur.
+Demande le même jeton GitHub. Tourne toutes les 15 min quand le Mac est allumé, récupère **tous** les clubs et télécharge toujours la dernière version du collecteur. Si le Mac n'a rien envoyé depuis 40 min, GitHub prend le relais (sauf Playtomic).
 
 ## Fichiers
 - `collect.py` : collecteur (Python, sans dépendance). `python3 collect.py` (GitHub) · `python3 collect.py --mac` (Playtomic)
