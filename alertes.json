@@ -3,20 +3,21 @@
   "alertes": [
     {
       "de": "17:00",
-      "a": "19:30",
+      "a": "21:00",
       "duree_min": 60,
       "clubs": [
         "Green Club",
         "Urban Padel",
         "Padel Parc Préverenges",
         "Centre Fairplay",
-        "Padel One Echandens"
+        "Padel One Echandens",
+        "Padel Parc Etoy"
       ],
       "sans_simple": true,
+      "actif": false,
       "dates": [
-        "2026-11-18"
-      ],
-      "actif": false
+        "2026-11-19"
+      ]
     }
   ]
 }
